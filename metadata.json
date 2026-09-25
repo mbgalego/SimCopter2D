@@ -1,0 +1,6 @@
+{
+  "name": "SimCopter 2D: Emergency Rescue",
+  "description": "Pilot emergency rescue helicopters across procedurally generated cities with realistic flight physics, dynamic weather, firefighting, rescue hoist, crowd control, and emergency missions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
