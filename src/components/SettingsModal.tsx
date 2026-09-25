@@ -16,7 +16,16 @@ interface SettingsModalProps {
   currentWeather: WeatherType;
   onChangeWeather: (type: WeatherType) => void;
   onRegenerateCity: () => void;
+  onSetTimeOfDay?: (hour: number) => void;
+  currentTimeOfDay?: number;
 }
+
+const TIME_OF_DAY_PRESETS = [
+  { hour: 6.0, label: 'Dawn Sunrise', icon: '🌅' },
+  { hour: 12.0, label: 'Midday Noon', icon: '☀️' },
+  { hour: 18.5, label: 'Sunset Glow', icon: '🌇' },
+  { hour: 23.0, label: 'Night Ops', icon: '🌙' },
+];
 
 const WEATHER_OPTIONS: Array<{ type: WeatherType; label: string; icon: string }> = [
   { type: 'clear', label: 'Clear Sky', icon: '☀️' },
@@ -34,6 +43,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   currentWeather,
   onChangeWeather,
   onRegenerateCity,
+  onSetTimeOfDay,
+  currentTimeOfDay,
 }) => {
   if (!isOpen) return null;
 
@@ -81,8 +92,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               ))}
             </div>
 
-            <div className="mt-2 flex items-center justify-between bg-slate-800/40 p-2.5 rounded-xl border border-slate-800">
-              <span className="text-slate-300">Auto Dynamic Weather Transitions</span>
+            {/* Time of Day Cycle Presets */}
+            {onSetTimeOfDay && (
+              <div className="mt-3">
+                <div className="text-[11px] font-bold text-slate-400 mb-1.5 flex items-center justify-between">
+                  <span>Time-of-Day Lighting Presets</span>
+                  {currentTimeOfDay !== undefined && (
+                    <span className="text-amber-300 font-mono">
+                      {Math.floor(currentTimeOfDay).toString().padStart(2, '0')}:
+                      {Math.floor((currentTimeOfDay % 1) * 60).toString().padStart(2, '0')}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {TIME_OF_DAY_PRESETS.map((p) => (
+                    <button
+                      key={p.label}
+                      onClick={() => onSetTimeOfDay(p.hour)}
+                      className="flex flex-col items-center justify-center p-1.5 rounded-xl border border-slate-700/80 bg-slate-800/40 hover:bg-slate-800 hover:border-amber-400/60 text-slate-300 transition"
+                    >
+                      <span className="text-sm">{p.icon}</span>
+                      <span className="text-[9px] mt-0.5">{p.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-2.5 flex items-center justify-between bg-slate-800/40 p-2.5 rounded-xl border border-slate-800">
+              <div>
+                <div className="text-slate-200 font-semibold">Auto Dynamic Day/Night & Weather Transitions</div>
+                <div className="text-[10px] text-slate-400">Gradual progression from sunrise to midday, sunset, and starry night</div>
+              </div>
               <input
                 type="checkbox"
                 checked={settings.weatherCycle}

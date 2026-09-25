@@ -355,6 +355,13 @@ export function updateHelicopterPhysics(
 
   // Check buildings for rooftop landing or side collision
   for (const b of city.buildings) {
+    // If helicopter is safely parked/landed on a helipad on this building, it cannot collide with it!
+    if (heli.isLanded && heli.landedHelipad && heli.landedHelipad.buildingId === b.id) {
+      surfaceHeight = Math.max(surfaceHeight, b.roofHeight);
+      standingHelipad = heli.landedHelipad;
+      continue;
+    }
+
     const margin = 18; // helicopter chassis radius
     if (
       heli.x >= b.x - margin &&
@@ -362,17 +369,28 @@ export function updateHelicopterPhysics(
       heli.y >= b.y - margin &&
       heli.y <= b.y + b.height + margin
     ) {
+      // Find helipad on this building that the helicopter is landing on or over
+      const pad = city.helipads.find(
+        (h) => h.buildingId === b.id && Math.hypot(heli.x - h.x, heli.y - h.y) <= h.radius + 12
+      );
+
       // Inside building bounding footprint
-      if (heli.z < b.roofHeight - 6) {
-        // Flying lower than roof: Side collision!
-        collidedBuilding = b;
-        break;
+      if (pad && (heli.z >= b.roofHeight - 6 || heli.isLanded)) {
+        // Over helipad at roof level (or safely parked): Roof landing surface!
+        if (b.roofHeight > surfaceHeight) {
+          surfaceHeight = b.roofHeight;
+          standingHelipad = pad;
+        }
+      } else if (heli.z < b.roofHeight - 6) {
+        // Flying lower than roof: Side collision! (Only if not already landed)
+        if (!heli.isLanded) {
+          collidedBuilding = b;
+          break;
+        }
       } else {
         // Above roof: Roof surface!
         if (b.roofHeight > surfaceHeight) {
           surfaceHeight = b.roofHeight;
-          // Check if this building has a helipad
-          const pad = city.helipads.find((h) => h.buildingId === b.id);
           if (pad && Math.hypot(heli.x - pad.x, heli.y - pad.y) <= pad.radius) {
             standingHelipad = pad;
           }

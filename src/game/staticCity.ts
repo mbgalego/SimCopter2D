@@ -57,43 +57,88 @@ export function createStaticCityMap(): Omit<CityData, 'vehicles' | 'pedestrians'
     },
   ];
 
-  // 2. Scenic Bridges across River Channel
+  // 2. Scenic Bridges across River Channel (100% aligned with roads & rail)
   const bridges: Bridge[] = [
+    {
+      id: 'bridge-north-perimeter',
+      name: 'North Bay Scenic Bridge',
+      x: 4050,
+      y: 769,
+      width: 540,
+      height: 62,
+      deckHeight: 32,
+    },
     {
       id: 'bridge-north',
       name: 'North Skyline Suspension Bridge',
       x: 4050,
-      y: 1550,
+      y: 1569,
       width: 540,
-      height: 60,
+      height: 62,
       deckHeight: 45,
       towerHeight: 160,
-    },
-    {
-      id: 'bridge-central',
-      name: 'Grand Central Interstate Bridge (I-95)',
-      x: 4050,
-      y: 3550,
-      width: 540,
-      height: 98,
-      deckHeight: 35,
     },
     {
       id: 'bridge-rail',
       name: 'Union Rail & Commuter Steel Bridge',
       x: 4050,
-      y: 4550,
+      y: 2476,
       width: 540,
-      height: 52,
+      height: 48,
       deckHeight: 30,
+    },
+    {
+      id: 'bridge-midtown',
+      name: 'Midtown Grand Arch Bridge',
+      x: 4050,
+      y: 2569,
+      width: 540,
+      height: 62,
+      deckHeight: 35,
+    },
+    {
+      id: 'bridge-central',
+      name: 'Grand Central Interstate Bridge (I-95)',
+      x: 4050,
+      y: 3548,
+      width: 540,
+      height: 104,
+      deckHeight: 35,
+    },
+    {
+      id: 'bridge-civic',
+      name: 'Civic Center Boulevard Bridge',
+      x: 4050,
+      y: 4569,
+      width: 540,
+      height: 62,
+      deckHeight: 32,
+    },
+    {
+      id: 'bridge-airport',
+      name: 'Metro Airport Causeway Bridge',
+      x: 4050,
+      y: 5569,
+      width: 540,
+      height: 62,
+      deckHeight: 32,
     },
     {
       id: 'bridge-south',
       name: 'South Port Industrial Truss Bridge',
       x: 4050,
-      y: 6550,
+      y: 6568,
       width: 540,
       height: 64,
+      deckHeight: 32,
+    },
+    {
+      id: 'bridge-south-industrial',
+      name: 'South Industrial Expressway Bridge',
+      x: 4050,
+      y: 7569,
+      width: 540,
+      height: 62,
       deckHeight: 32,
     },
   ];
@@ -152,10 +197,10 @@ export function createStaticCityMap(): Omit<CityData, 'vehicles' | 'pedestrians'
     {
       id: 'park-heliport-lawn',
       name: 'Central Heliport Safety Clear Zone',
-      x: 2850,
-      y: 4250,
-      width: 440,
-      height: 380,
+      x: 3080,
+      y: 4070,
+      width: 400,
+      height: 330,
       type: 'lawn',
       color: '#1c3d2e',
     },
@@ -284,10 +329,10 @@ export function createStaticCityMap(): Omit<CityData, 'vehicles' | 'pedestrians'
     { id: 'tl-10', x: 7200, y: 6600, state: 'green_ns', timer: 13 },
   ];
 
-  // 8. Railroad Track & Commuter Train Loop
+  // 8. Railroad Track & Commuter Train Loop (crosses river across bridge-rail at y: 2500)
   const railLoopPoints = [
-    { x: 3000, y: 2600 },
-    { x: 5200, y: 2600 },
+    { x: 3000, y: 2500 },
+    { x: 5200, y: 2500 },
     { x: 7200, y: 2600 },
     { x: 7400, y: 4600 },
     { x: 6400, y: 6200 },
@@ -297,7 +342,7 @@ export function createStaticCityMap(): Omit<CityData, 'vehicles' | 'pedestrians'
     { x: 1000, y: 4600 },
     { x: 1000, y: 1600 },
     { x: 3000, y: 1600 },
-    { x: 3000, y: 2600 },
+    { x: 3000, y: 2500 },
   ];
 
   let totalTrackLength = 0;
@@ -348,16 +393,16 @@ export function createStaticCityMap(): Omit<CityData, 'vehicles' | 'pedestrians'
     return list;
   };
 
-  // 9.1. CENTRAL HELIPORT BASE (Starting Hub)
+  // 9.1. CENTRAL HELIPORT BASE (Starting Hub - east of Civic Plaza Ave and north of the roundabout)
   const heliportHQ: Building = {
     id: 'b-central-heliport',
     name: 'Central Metro Heliport Base & Terminal',
     elevationLabel: '30 FT',
     stories: 2,
-    x: 2900,
-    y: 4300,
-    width: 340,
-    height: 240,
+    x: 3120,
+    y: 4120,
+    width: 320,
+    height: 220,
     roofHeight: 30,
     type: 'hangar',
     geometry: 'box',
@@ -365,29 +410,29 @@ export function createStaticCityMap(): Omit<CityData, 'vehicles' | 'pedestrians'
     color: '#334155',
     roofColor: '#1e293b',
     beacon: true,
-    windows: createWindows(340, 240, 2, 8),
+    windows: createWindows(320, 220, 2, 8),
   };
   buildings.push(heliportHQ);
 
   helipads.push(
     {
       id: 'pad-hq-alpha',
-      x: 3000,
-      y: 4420,
-      altitude: 0,
+      x: 3220,
+      y: 4230,
+      altitude: 30,
       radius: 26,
       type: 'hangar',
-      label: 'BASE HELIPAD ALPHA',
+      label: 'BASE HELIPAD ALPHA (30 FT)',
       buildingId: heliportHQ.id,
     },
     {
       id: 'pad-hq-bravo',
-      x: 3140,
-      y: 4420,
-      altitude: 0,
+      x: 3350,
+      y: 4230,
+      altitude: 30,
       radius: 26,
       type: 'hangar',
-      label: 'BASE HELIPAD BRAVO',
+      label: 'BASE HELIPAD BRAVO (30 FT)',
       buildingId: heliportHQ.id,
     }
   );
@@ -688,10 +733,10 @@ export function createStaticCityMap(): Omit<CityData, 'vehicles' | 'pedestrians'
     id: 'pad-military-base',
     x: 1210,
     y: 7000,
-    altitude: 0,
+    altitude: 40,
     radius: 30,
     type: 'military',
-    label: 'FORT SENTINEL MILITARY HELIPAD',
+    label: 'FORT SENTINEL MILITARY HELIPAD (40 FT)',
     buildingId: militaryHangar.id,
   });
 
@@ -784,12 +829,12 @@ export function createStaticCityMap(): Omit<CityData, 'vehicles' | 'pedestrians'
   helipads.push(
     {
       id: 'pad-airport-terminal',
-      x: 6380,
-      y: 6300,
-      altitude: 0,
+      x: 6390,
+      y: 6510,
+      altitude: 45,
       radius: 28,
       type: 'airport',
-      label: 'AIRPORT CONCOURSE HELIPAD (AIR TAXI)',
+      label: 'AIRPORT CONCOURSE HELIPAD (AIR TAXI - 45 FT)',
       buildingId: airportTerminal.id,
     },
     {

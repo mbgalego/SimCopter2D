@@ -18,6 +18,7 @@ import {
   X,
   AlertTriangle,
   ArrowDown,
+  Anchor,
   Navigation,
 } from 'lucide-react';
 
@@ -245,6 +246,16 @@ export const HelpManualModal: React.FC<HelpManualModalProps> = ({ isOpen, onClos
                   Use the <strong>START ENG / ENG: ON</strong> button on the HUD (or Key <strong>I</strong>) to start or shut down the turbine.
                   <br />
                   When the engine is stopped on the ground, rotor RPM decelerates to zero. You must spool the rotor up to 80%+ RPM before collective lift is generated.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-800/70 border border-slate-700/80 p-3.5">
+                <div className="flex items-center gap-2 font-mono font-bold text-cyan-400 text-sm mb-1">
+                  <Anchor className="w-4 h-4" />
+                  <span>Auto-Hover Altitude & Drift Lock (Key [Z])</span>
+                </div>
+                <p className="text-slate-300 leading-relaxed">
+                  Toggle Auto-Hover via the button above the collective slider or press Key <strong>Z</strong>. When active, autopilot damping eliminates wind drift and arrests horizontal velocity, stabilizing the aircraft for pinpoint rescue hoists and aerial firefighting.
                 </p>
               </div>
 

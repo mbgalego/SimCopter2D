@@ -21,6 +21,7 @@ import {
   Maximize,
   Minimize,
   Compass,
+  Anchor,
   Sun,
   Moon,
   CloudFog,
@@ -165,6 +166,11 @@ export const FlightHUD: React.FC<FlightHUDProps> = ({
 
   // Weather icon & wind telemetry
   const windAngleDeg = Math.round((weather.windDirection * 180) / Math.PI);
+  const hour = Math.floor(weather.timeOfDay ?? 12);
+  const min = Math.floor(((weather.timeOfDay ?? 12) % 1) * 60);
+  const timeFormatted = `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
+  const phaseLabel = weather.timePhase ? weather.timePhase.toUpperCase() : 'DAY';
+
   const getWeatherIcon = () => {
     switch (weather.type) {
       case 'clear':
@@ -212,9 +218,9 @@ export const FlightHUD: React.FC<FlightHUDProps> = ({
       {/* ========================================================================= */}
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-1.5 flex-wrap">
-          {/* LEFT: Quick Menus & Engine Toggle */}
-          <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 flex-wrap">
-            {/* Callsign & Simple Start/Stop Button */}
+          {/* LEFT: Callsign, Engine Start/Stop & Time/Weather/Speed Line */}
+          <div className="pointer-events-auto flex items-center gap-1.5 flex-wrap">
+            {/* Callsign Badge */}
             <div className="flex items-center gap-1.5 rounded-lg bg-slate-900/95 backdrop-blur-md border border-slate-700/80 px-2 py-1 shadow-md">
               <span
                 className={`h-2 w-2 rounded-full ${
@@ -226,7 +232,7 @@ export const FlightHUD: React.FC<FlightHUDProps> = ({
               </span>
             </div>
 
-            {/* Simple Compact Engine Button */}
+            {/* Compact Engine Start/Stop Button */}
             <button
               onClick={onToggleEngine}
               className={`rounded-lg px-2.5 py-1 text-[11px] font-mono font-bold shadow-md active:scale-95 transition ${
@@ -239,7 +245,40 @@ export const FlightHUD: React.FC<FlightHUDProps> = ({
               {heli.engineStarted ? 'Stop' : 'Start'}
             </button>
 
-            {/* Action Buttons */}
+            {/* Time of Day, Weather, Wind & SPEED Line (User requested: speed in same line as time of day) */}
+            <div
+              className="flex items-center gap-1.5 rounded-lg bg-slate-900/90 backdrop-blur-md border border-slate-700/80 px-2.5 py-1 text-[10px] sm:text-[11px] font-mono shadow-md"
+              title={`Local Time: ${timeFormatted} (${phaseLabel}) | Speed: ${horizontalKnots} KT | Weather: ${weather.type.toUpperCase()} | Wind: ${Math.round(weather.windSpeed)} KT`}
+            >
+              <span className="font-bold text-amber-300">{timeFormatted}</span>
+              <span className="text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-300 uppercase font-semibold">
+                {phaseLabel}
+              </span>
+              <span className="text-slate-600">·</span>
+              {getWeatherIcon()}
+              <span className="text-slate-300 font-bold uppercase hidden xs:inline">{weather.type}</span>
+              <span className="text-slate-600 hidden xs:inline">·</span>
+              <Navigation
+                className="w-3 h-3 text-sky-400 transition-transform"
+                style={{ transform: `rotate(${windAngleDeg}deg)` }}
+              />
+              <span className="font-bold text-white">{Math.round(weather.windSpeed)} KT</span>
+              <span className="text-slate-600">·</span>
+              <span className="text-slate-400">SPD:</span>
+              <strong className="text-white font-bold">{horizontalKnots} KT</strong>
+            </div>
+          </div>
+
+          {/* RIGHT: Quick Action Buttons (Settings, Hangar, Missions, etc.) + Active Mission Badge */}
+          <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 flex-wrap">
+            {mission && (
+              <div className="rounded-lg bg-red-950/90 border border-red-500/70 px-2 py-1 text-[11px] font-mono text-slate-200 flex items-center gap-1.5 shadow-md">
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" />
+                <span className="text-red-300 font-bold max-w-[120px] truncate">{mission.title}</span>
+                <span className="text-emerald-400 font-bold">{Math.floor(mission.timeRemaining)}s</span>
+              </div>
+            )}
+
             <button
               onClick={onOpenMissions}
               className="flex items-center gap-1 rounded-lg bg-red-600 hover:bg-red-500 text-white px-2 py-1 text-[11px] font-bold shadow-md active:scale-95 transition"
@@ -289,76 +328,69 @@ export const FlightHUD: React.FC<FlightHUDProps> = ({
               <Settings className="w-3.5 h-3.5" />
             </button>
           </div>
-
-          {/* RIGHT: Compact Weather & Wind Pill + Active Mission */}
-          <div className="pointer-events-auto flex items-center gap-1.5">
-            <div
-              className="flex items-center gap-1.5 rounded-lg bg-slate-900/90 backdrop-blur-md border border-slate-700/80 px-2 py-1 text-[10px] font-mono shadow-md"
-              title={`Weather: ${weather.type.toUpperCase()} | Wind: ${Math.round(weather.windSpeed)} KT at ${windAngleDeg}°`}
-            >
-              {getWeatherIcon()}
-              <span className="text-slate-300 font-bold uppercase">{weather.type}</span>
-              <span className="text-slate-600">|</span>
-              <Navigation
-                className="w-3 h-3 text-sky-400 transition-transform"
-                style={{ transform: `rotate(${windAngleDeg}deg)` }}
-              />
-              <span className="font-bold text-white">{Math.round(weather.windSpeed)} KT</span>
-            </div>
-
-            {mission && (
-              <div className="rounded-lg bg-red-950/90 border border-red-500/70 px-2 py-1 text-[11px] font-mono text-slate-200 flex items-center gap-1.5 shadow-md">
-                <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" />
-                <span className="text-red-300 font-bold max-w-[130px] truncate">{mission.title}</span>
-                <span className="text-emerald-400 font-bold">{Math.floor(mission.timeRemaining)}s</span>
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* Telemetry Strip + Status Gauges */}
-        <div className="pointer-events-auto flex items-center justify-between gap-2 px-2.5 py-1 rounded-xl bg-slate-900/90 backdrop-blur-md border border-slate-800 text-[10px] sm:text-[11px] font-mono shadow-md max-w-2xl">
-          {/* Telemetry numbers */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            <div>
-              <span className="text-slate-400">ALT:</span>{' '}
-              <strong className="text-white">{altitudeMsl}</strong>
-              <span className="text-[9px] text-slate-400">FT</span>
-            </div>
-
+        {/* LEFT SIDE STACK: AGL, Compass, Status Indicators, and Stacked Gauges (Hull, Fuel, Water, PAX) */}
+        <div className="pointer-events-auto flex flex-col gap-1.5 max-w-[165px] sm:max-w-[180px]">
+          {/* AGL & Compass Header Pill */}
+          <div className="flex items-center justify-between px-2.5 py-1 rounded-xl bg-slate-900/90 backdrop-blur-md border border-slate-800 text-[10px] sm:text-[11px] font-mono shadow-md">
             <div>
               <span className="text-slate-400">AGL:</span>{' '}
               <strong className={radarAgl < 25 ? 'text-amber-400' : 'text-emerald-400'}>{radarAgl}</strong>
-              <span className="text-[9px] text-slate-400">FT</span>
+              <span className="text-[9px] text-slate-400"> FT</span>
             </div>
-
-            <div>
-              <span className="text-slate-400">SPD:</span>{' '}
-              <strong className="text-white">{horizontalKnots}</strong>
-              <span className="text-[9px] text-slate-400">KT</span>
-            </div>
-
-            <div className={`flex items-center gap-0.5 font-bold ${dropRateColor}`}>
-              <span className="text-slate-400 font-normal">VSI:</span>
-              {verticalSpeed > 60 ? (
-                <ArrowUp className="w-3 h-3 inline" />
-              ) : verticalSpeed < -60 ? (
-                <ArrowDown className="w-3 h-3 inline" />
-              ) : null}
-              <span>{verticalSpeed > 0 ? `+${verticalSpeed}` : verticalSpeed}</span>
-            </div>
-
-            <div className="hidden xs:flex items-center gap-0.5">
-              <Compass className="w-2.5 h-2.5 text-amber-400" />
-              <span className="text-amber-400 font-bold">{headingDeg}° {cardinal}</span>
+            <div className="flex items-center gap-1 text-amber-400 font-bold">
+              <Compass className="w-3 h-3 text-amber-400" />
+              <span>{headingDeg}° {cardinal}</span>
             </div>
           </div>
 
-          {/* Quick Hull, Fuel, Water Bars */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-1" title="Hull Health">
-              <Heart className="w-3 h-3 text-red-500 fill-current" />
-              <div className="h-1.5 w-10 sm:w-14 rounded-full bg-slate-800 overflow-hidden">
+          {/* Active Flight Status Indicators */}
+          {(isAutoHoverActive || heli.sirenActive || heli.searchlightActive) && (
+            <div className="flex items-center gap-1 flex-wrap">
+              {isAutoHoverActive && (
+                <div
+                  className="flex items-center gap-1 rounded-md bg-cyan-950/90 border border-cyan-400/80 px-1.5 py-0.5 text-[9px] font-bold text-cyan-300 shadow-sm animate-pulse"
+                  title="Auto-Hover Active: Position & Altitude Stabilized"
+                >
+                  <Anchor className="w-2.5 h-2.5" />
+                  <span>HOVER</span>
+                </div>
+              )}
+              {heli.sirenActive && (
+                <div
+                  className="flex items-center gap-1 rounded-md bg-red-950/90 border border-red-400 px-1.5 py-0.5 text-[9px] font-bold text-red-300 shadow-sm animate-pulse"
+                  title="Emergency Siren Active (Key [X])"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping inline-block" />
+                  <span>SIREN</span>
+                </div>
+              )}
+              {heli.searchlightActive && (
+                <div
+                  className="flex items-center gap-1 rounded-md bg-yellow-950/90 border border-yellow-400 px-1.5 py-0.5 text-[9px] font-bold text-yellow-300 shadow-sm"
+                  title="High-Intensity Searchlight Active (Key [L])"
+                >
+                  <span>BEAM</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Stacked Gauges (Hull, Fuel, Water, Passengers - stacked one below the other) */}
+          <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-slate-900/90 backdrop-blur-md border border-slate-800 text-[10px] font-mono shadow-md">
+            {/* 1. Hull Integrity */}
+            <div className="flex flex-col gap-0.5" title={`Hull Integrity: ${Math.round(healthPercent)}%`}>
+              <div className="flex items-center justify-between text-[9px]">
+                <span className="flex items-center gap-1 text-slate-300 font-semibold">
+                  <Heart className="w-3 h-3 text-red-500 fill-current" />
+                  <span>HULL</span>
+                </span>
+                <span className={healthPercent < 30 ? 'text-red-400 font-bold animate-pulse' : 'text-slate-300'}>
+                  {Math.round(healthPercent)}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-slate-950/90 overflow-hidden border border-slate-800">
                 <div
                   className={`h-full ${healthPercent < 30 ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`}
                   style={{ width: `${healthPercent}%` }}
@@ -366,9 +398,18 @@ export const FlightHUD: React.FC<FlightHUDProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-1" title="Fuel Capacity">
-              <Fuel className="w-3 h-3 text-amber-400" />
-              <div className="h-1.5 w-10 sm:w-14 rounded-full bg-slate-800 overflow-hidden">
+            {/* 2. Fuel Tank */}
+            <div className="flex flex-col gap-0.5" title={`Fuel: ${Math.round(fuelPercent)}%`}>
+              <div className="flex items-center justify-between text-[9px]">
+                <span className="flex items-center gap-1 text-slate-300 font-semibold">
+                  <Fuel className="w-3 h-3 text-amber-400" />
+                  <span>FUEL</span>
+                </span>
+                <span className={fuelPercent < 20 ? 'text-red-400 font-bold animate-pulse' : 'text-slate-300'}>
+                  {Math.round(fuelPercent)}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-slate-950/90 overflow-hidden border border-slate-800">
                 <div
                   className={`h-full ${fuelPercent < 20 ? 'bg-red-500 animate-pulse' : 'bg-amber-400'}`}
                   style={{ width: `${fuelPercent}%` }}
@@ -376,9 +417,16 @@ export const FlightHUD: React.FC<FlightHUDProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-1" title="Water Cannon Tank">
-              <Droplet className="w-3 h-3 text-sky-400 fill-current" />
-              <div className="h-1.5 w-10 sm:w-14 rounded-full bg-slate-800 overflow-hidden">
+            {/* 3. Water Cannon Tank */}
+            <div className="flex flex-col gap-0.5" title={`Water Cannon Tank: ${Math.round(waterPercent)}%`}>
+              <div className="flex items-center justify-between text-[9px]">
+                <span className="flex items-center gap-1 text-slate-300 font-semibold">
+                  <Droplet className="w-3 h-3 text-sky-400 fill-current" />
+                  <span>WATER</span>
+                </span>
+                <span className="text-sky-300">{Math.round(waterPercent)}%</span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-slate-950/90 overflow-hidden border border-slate-800">
                 <div
                   className="h-full bg-sky-400"
                   style={{ width: `${waterPercent}%` }}
@@ -386,9 +434,15 @@ export const FlightHUD: React.FC<FlightHUDProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-0.5 text-slate-300" title="Passengers">
-              <Users className="w-3 h-3 text-emerald-400" />
-              <span className="font-bold text-white text-[10px]">{heli.passengers.length}/{model.passengerCapacity}</span>
+            {/* 4. Passengers */}
+            <div className="flex items-center justify-between text-[9px] pt-0.5 border-t border-slate-800" title="Passenger Capacity">
+              <span className="flex items-center gap-1 text-slate-300 font-semibold">
+                <Users className="w-3 h-3 text-emerald-400" />
+                <span>PAX</span>
+              </span>
+              <span className="font-bold text-white text-[10px]">
+                {heli.passengers.length} / {model.passengerCapacity}
+              </span>
             </div>
           </div>
         </div>
@@ -417,11 +471,11 @@ export const FlightHUD: React.FC<FlightHUDProps> = ({
           </div>
         )}
 
-        {noFlyAlert && (
+        {(noFlyAlert || inNoFlyZone) && (
           <div className="flex items-center gap-2 rounded-xl border-2 border-yellow-400 bg-red-700/95 backdrop-blur-md px-3.5 py-1.5 text-xs font-bold text-white shadow-2xl animate-pulse">
             <ShieldAlert className="w-4 h-4 text-yellow-300 flex-shrink-0" />
             <span>
-              🚨 PROHIBITED AIRSPACE: {noFlyAlert.name} — CEILING {noFlyAlert.ceilingAltitude} FT! TURN BACK!
+              🚨 PROHIBITED AIRSPACE: {noFlyAlert ? noFlyAlert.name : 'RESTRICTED MILITARY ZONE'} — CEILING {noFlyAlert ? noFlyAlert.ceilingAltitude : 350} FT! TURN BACK!
             </span>
           </div>
         )}
@@ -461,13 +515,14 @@ export const FlightHUD: React.FC<FlightHUDProps> = ({
 
       {/* ========================================================================= */}
       {/* --- ALWAYS-VISIBLE AVIATION ALTITUDE SIDE BAR & COLORED DROP RATE GAUGE --- */}
+      {/* Positioned directly above Auto-Hover and Collective on right edge */}
       {/* ========================================================================= */}
-      <div className="pointer-events-auto absolute right-2.5 top-28 sm:top-24 flex flex-col items-center z-20">
-        <div className="flex flex-col items-center bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-1.5 shadow-xl font-mono text-[9px]">
-          <span className="text-[8px] font-bold text-slate-400 tracking-wider mb-0.5">ALT TAPE</span>
+      <div className="pointer-events-auto absolute right-3 sm:right-5 bottom-[208px] sm:bottom-[232px] flex flex-col items-center z-20">
+        <div className="flex flex-col items-center w-12 sm:w-13 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-1.5 shadow-xl font-mono text-[9px]">
+          <span className="text-[8px] font-bold text-slate-400 tracking-wider mb-0.5">ALT</span>
 
           {/* Vertical Altitude Ladder Tape */}
-          <div className="relative h-36 w-8 sm:w-9 bg-slate-950/95 rounded-lg border border-slate-800 overflow-hidden flex flex-col justify-between py-0.5 px-0.5">
+          <div className="relative h-28 sm:h-32 w-full bg-slate-950/95 rounded-lg border border-slate-800 overflow-hidden flex flex-col justify-between py-0.5 px-0.5">
             {/* Height zone tick markers */}
             <div className="absolute top-0.5 right-0.5 text-[7px] text-slate-500 font-bold">600</div>
             <div className="absolute top-1/4 right-0.5 text-[7px] text-slate-500 font-bold">450</div>
@@ -508,7 +563,7 @@ export const FlightHUD: React.FC<FlightHUDProps> = ({
 
           {/* Colored Drop Rate Badge */}
           <div
-            className={`mt-1 px-1 py-0.5 rounded border text-[8px] font-bold text-center leading-tight ${dropRateBg} ${dropRateColor}`}
+            className={`mt-1 w-full px-0.5 py-0.5 rounded border text-[8px] font-bold text-center leading-tight ${dropRateBg} ${dropRateColor}`}
             title="Descent Rate (Green: Safe, Yellow: Caution, Red: Danger)"
           >
             <div>{verticalSpeed > 0 ? `+${verticalSpeed}` : verticalSpeed}</div>

@@ -9,6 +9,7 @@ import { FlightInputs } from '../game/physics';
 
 interface TouchControlsProps {
   onInputUpdate: (updater: (prev: FlightInputs) => FlightInputs) => void;
+  onJoystickActiveChange?: (active: boolean) => void;
   waterRemaining: number;
   waterMax: number;
   isSirenActive: boolean;
@@ -23,6 +24,7 @@ interface TouchControlsProps {
 
 export const TouchControls: React.FC<TouchControlsProps> = ({
   onInputUpdate,
+  onJoystickActiveChange,
   waterRemaining,
   isSirenActive,
   isHoistDeployed,
@@ -37,6 +39,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   const [stickOffset, setStickOffset] = useState({ x: 0, y: 0 });
   const stickPointerIdRef = useRef<number | null>(null);
   const originRef = useRef<{ x: number; y: number } | null>(null);
+  const currentNormInputsRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Collective slider state
   const collectiveSliderRef = useRef<HTMLDivElement>(null);
@@ -51,6 +54,22 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     } catch {}
   };
 
+  // Keep feeding inputs while stick is held still
+  useEffect(() => {
+    if (!stickActive) return;
+    const interval = setInterval(() => {
+      if (stickPointerIdRef.current !== null) {
+        const { x, y } = currentNormInputsRef.current;
+        onInputUpdate((prev) => ({
+          ...prev,
+          cyclicX: x,
+          cyclicY: y,
+        }));
+      }
+    }, 20);
+    return () => clearInterval(interval);
+  }, [stickActive, onInputUpdate]);
+
   // Joystick touch handlers
   const handleZonePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -64,6 +83,8 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     setOrigin(newOrigin);
     setStickActive(true);
     setStickOffset({ x: 0, y: 0 });
+    currentNormInputsRef.current = { x: 0, y: 0 };
+    onJoystickActiveChange?.(true);
     triggerHaptic(12);
 
     try {
@@ -89,6 +110,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
 
     const normX = dx / maxRadius;
     const normY = dy / maxRadius; // negative is forward, positive is back
+    currentNormInputsRef.current = { x: normX, y: normY };
 
     onInputUpdate((prev) => ({
       ...prev,
@@ -103,6 +125,8 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
       originRef.current = null;
       setStickActive(false);
       setStickOffset({ x: 0, y: 0 });
+      currentNormInputsRef.current = { x: 0, y: 0 };
+      onJoystickActiveChange?.(false);
       onInputUpdate((prev) => ({
         ...prev,
         cyclicX: 0,

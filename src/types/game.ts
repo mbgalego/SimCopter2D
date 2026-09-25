@@ -4,6 +4,7 @@
  */
 
 export type WeatherType = 'clear' | 'windy' | 'fog' | 'storm' | 'night';
+export type TimePhase = 'dawn' | 'morning' | 'noon' | 'afternoon' | 'sunset' | 'twilight' | 'night';
 
 export interface WeatherState {
   type: WeatherType;
@@ -15,6 +16,18 @@ export interface WeatherState {
   ambientLight: number; // 0.15 (night) to 1.0 (bright noon)
   lightning: number; // flash intensity 0 to 1
   clouds: Array<{ x: number; y: number; radius: number; speed: number; opacity: number }>;
+  // Dynamic Time-of-Day Cycle
+  timeOfDay: number; // 0 to 24 hours (e.g. 7.5 = 07:30 AM)
+  timePhase: TimePhase;
+  sunAngle: number; // radians for directional shadow casting
+  sunAltitude: number; // 0 (horizon/night) to 1 (high noon)
+  skyAtmosphere: {
+    r: number;
+    g: number;
+    b: number;
+    alpha: number;
+    description: string;
+  };
 }
 
 export interface Building {
@@ -129,6 +142,12 @@ export interface Vehicle {
   trailerColor?: string;
   busStopTimer?: number;
   stoppedAtLight?: boolean;
+  roundaboutState?: {
+    rbId: string;
+    targetHeading: number;
+    angle: number;
+    targetRadius: number;
+  };
 }
 
 export interface TrainStation {

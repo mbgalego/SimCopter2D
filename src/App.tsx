@@ -21,7 +21,29 @@ import { MissionSystem } from './game/missionSystem';
 import { checkObstacleRadar, createInitialHelicopter, FlightInputs, ObstacleAlert, updateHelicopterPhysics } from './game/physics';
 import { GameRenderer } from './game/renderer';
 import { WeatherEngine } from './game/weather';
-import { CityData, GameSettings, HelicopterModel, HelicopterState, Mission, Pedestrian, PilotProfile, WaterDrop, WeatherType } from './types/game';
+import { CityData, GameSettings, HelicopterModel, HelicopterState, Mission, Pedestrian, PilotProfile, RailroadTrack, WaterDrop, WeatherType } from './types/game';
+
+function getPointAlongTrack(track: RailroadTrack, ratio: number): { x: number; y: number; heading: number } {
+  const normRatio = ((ratio % 1) + 1) % 1;
+  const targetDist = normRatio * track.totalLength;
+  let accumulated = 0;
+
+  for (let i = 0; i < track.points.length - 1; i++) {
+    const p1 = track.points[i];
+    const p2 = track.points[i + 1];
+    const segDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    if (accumulated + segDist >= targetDist || i === track.points.length - 2) {
+      const segT = segDist > 0 ? (targetDist - accumulated) / segDist : 0;
+      const x = p1.x + (p2.x - p1.x) * segT;
+      const y = p1.y + (p2.y - p1.y) * segT;
+      const heading = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+      return { x, y, heading };
+    }
+    accumulated += segDist;
+  }
+  const last = track.points[track.points.length - 1];
+  return { x: last.x, y: last.y, heading: 0 };
+}
 
 const INITIAL_SETTINGS: GameSettings = {
   autoRudder: true,
@@ -65,7 +87,7 @@ export default function App() {
   const inputsRef = useRef<FlightInputs>({
     cyclicX: 0,
     cyclicY: 0,
-    collective: 0.5,
+    collective: 0.0,
     rudder: 0,
     dropWater: false,
     toggleHoist: false,
@@ -73,12 +95,14 @@ export default function App() {
     toggleMegaphone: false,
     toggleSearchlight: false,
     toggleFLIR: false,
+    autoHover: false,
   });
 
   // UI States
   const [hudHeli, setHudHeli] = useState<HelicopterState | null>(null);
   const [hudWeather, setHudWeather] = useState(weatherEngineRef.current.state);
   const [activeMission, setActiveMission] = useState<Mission | null>(null);
+  const [isAutoHoverActive, setIsAutoHoverActive] = useState(false);
   const [pilot, setPilot] = useState<PilotProfile>(() => {
     try {
       const saved = localStorage.getItem('simcopter_pilot_profile');
@@ -107,6 +131,7 @@ export default function App() {
   const [missionCompleteBanner, setMissionCompleteBanner] = useState<Mission | null>(null);
   const [currentObstacleAlert, setCurrentObstacleAlert] = useState<ObstacleAlert | null>(null);
   const lastWarningBuildingIdRef = useRef<string | null>(null);
+  const isTouchJoystickActiveRef = useRef<boolean>(false);
 
   // Save pilot profile to LocalStorage
   useEffect(() => {
@@ -145,6 +170,12 @@ export default function App() {
     ];
 
     setHudHeli({ ...initialHeli });
+    setIsAutoHoverActive(false);
+    inputsRef.current.autoHover = false;
+    inputsRef.current.collective = 0.0;
+    inputsRef.current.cyclicX = 0;
+    inputsRef.current.cyclicY = 0;
+    inputsRef.current.rudder = 0;
     setIsCrashed(false);
     setCrashReason('');
   }, [pilot.currentChopperId]);
@@ -197,6 +228,12 @@ export default function App() {
         setIsMissionsOpen((prev) => !prev);
       } else if (e.code === 'KeyI') {
         inputsRef.current.toggleEngine = true;
+      } else if (e.code === 'KeyZ') {
+        setIsAutoHoverActive((prev) => {
+          const next = !prev;
+          inputsRef.current.autoHover = next;
+          return next;
+        });
       } else if (e.code === 'KeyH' || e.code === 'Slash') {
         setIsHelpOpen((prev) => !prev);
       }
@@ -242,8 +279,8 @@ export default function App() {
         inputsRef.current.cyclicY = cy;
         inputsRef.current.rudder = rudder;
       } else {
-        // If user is not actively steering via touch, ensure keyboard neutral releases controls completely
-        if (Math.abs(inputsRef.current.cyclicX) <= 1 && Math.abs(inputsRef.current.cyclicY) <= 1) {
+        // Only reset cyclicX/cyclicY if touch/virtual joystick is NOT active!
+        if (!isTouchJoystickActiveRef.current) {
           inputsRef.current.cyclicX = 0;
           inputsRef.current.cyclicY = 0;
           inputsRef.current.rudder = 0;
@@ -283,6 +320,9 @@ export default function App() {
       const model = currentModelRef.current;
       const weatherEngine = weatherEngineRef.current;
       const missionSystem = missionSystemRef.current;
+
+      // Advance dynamic weather & time-of-day cycle
+      weatherEngine.update(dt);
 
       if (heli && city && model) {
         // 1. Update Physics
@@ -482,17 +522,151 @@ export default function App() {
         }
 
         // 3. Traffic Simulation
+        // 3.1. Traffic Light Controller Cycle
+        if (city.trafficLights) {
+          city.trafficLights.forEach((tl) => {
+            tl.timer -= dt;
+            if (tl.timer <= 0) {
+              if (tl.state === 'green_ns') {
+                tl.state = 'yellow_ns';
+                tl.timer = 3.5;
+              } else if (tl.state === 'yellow_ns') {
+                tl.state = 'green_ew';
+                tl.timer = 12;
+              } else if (tl.state === 'green_ew') {
+                tl.state = 'yellow_ew';
+                tl.timer = 3.5;
+              } else {
+                tl.state = 'green_ns';
+                tl.timer = 12;
+              }
+            }
+          });
+        }
+
+        // 3.2. Vehicle Dynamics & Signal Observance
         city.vehicles.forEach((veh) => {
           // If helicopter siren is screaming nearby, cars pull over and stop!
           const distToHeli = Math.hypot(veh.x - heli.x, veh.y - heli.y);
           if (heli.sirenActive && distToHeli < 240 && heli.z < 250) {
-            veh.speed = Math.max(0, veh.speed - dt * 45);
+            veh.speed = Math.max(0, veh.speed - dt * 50);
           } else {
-            veh.speed += (veh.targetSpeed - veh.speed) * dt;
+            // Check traffic light ahead
+            let mustStop = false;
+            if (city.trafficLights) {
+              for (const tl of city.trafficLights) {
+                const distToLight = Math.hypot(veh.x - tl.x, veh.y - tl.y);
+                if (distToLight < 65) {
+                  const isNorthSouth = Math.abs(Math.sin(veh.heading)) > 0.7;
+                  if (isNorthSouth && tl.state !== 'green_ns') {
+                    const approaching =
+                      (Math.sin(veh.heading) > 0 && veh.y < tl.y) ||
+                      (Math.sin(veh.heading) < 0 && veh.y > tl.y);
+                    if (approaching) {
+                      mustStop = true;
+                      break;
+                    }
+                  } else if (!isNorthSouth && tl.state !== 'green_ew') {
+                    const approaching =
+                      (Math.cos(veh.heading) > 0 && veh.x < tl.x) ||
+                      (Math.cos(veh.heading) < 0 && veh.x > tl.x);
+                    if (approaching) {
+                      mustStop = true;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+
+            // Transit bus stop behavior
+            if (veh.type === 'bus') {
+              if (veh.busStopTimer && veh.busStopTimer > 0) {
+                veh.busStopTimer -= dt;
+                mustStop = true;
+              } else if (!mustStop && Math.random() < 0.0006) {
+                veh.busStopTimer = 4.5;
+                mustStop = true;
+              }
+            }
+
+            veh.stoppedAtLight = mustStop;
+
+            if (mustStop) {
+              veh.speed = Math.max(0, veh.speed - dt * 45);
+            } else {
+              veh.speed += (veh.targetSpeed - veh.speed) * dt;
+            }
           }
 
-          veh.x += Math.cos(veh.heading) * veh.speed * dt;
-          veh.y += Math.sin(veh.heading) * veh.speed * dt;
+          // Roundabout circular navigation (cars go around the central monument/island)
+          let inRoundabout = false;
+          if (veh.roundaboutState) {
+            const rb = city.roundabouts?.find((r) => r.id === veh.roundaboutState!.rbId);
+            if (rb) {
+              inRoundabout = true;
+              const state = veh.roundaboutState;
+              const targetR = state.targetRadius;
+              const curveSpeed = Math.min(veh.speed, 30);
+              const angularSpeed = Math.max(0.2, curveSpeed / targetR);
+              state.angle += angularSpeed * dt;
+
+              veh.x = rb.x + Math.cos(state.angle) * targetR;
+              veh.y = rb.y + Math.sin(state.angle) * targetR;
+              veh.heading = state.angle + Math.PI / 2; // counter-clockwise circle heading
+
+              // Check if car reached exit side aligned with its target road heading
+              let angleNorm = state.angle % (Math.PI * 2);
+              if (angleNorm < 0) angleNorm += Math.PI * 2;
+              let targetNorm = state.targetHeading % (Math.PI * 2);
+              if (targetNorm < 0) targetNorm += Math.PI * 2;
+
+              let diff = Math.abs(angleNorm - targetNorm);
+              if (diff > Math.PI) diff = Math.PI * 2 - diff;
+
+              if (diff < 0.22) {
+                // Exit roundabout back onto straight road!
+                veh.heading = state.targetHeading;
+                veh.x = rb.x + Math.cos(state.targetHeading) * (rb.radius + 6);
+                veh.y = rb.y + Math.sin(state.targetHeading) * (rb.radius + 6);
+                veh.roundaboutState = undefined;
+              }
+            } else {
+              veh.roundaboutState = undefined;
+            }
+          } else if (city.roundabouts) {
+            for (const rb of city.roundabouts) {
+              const dist = Math.hypot(veh.x - rb.x, veh.y - rb.y);
+              if (dist <= rb.radius + 6) {
+                const toCenterX = rb.x - veh.x;
+                const toCenterY = rb.y - veh.y;
+                const movingX = Math.cos(veh.heading);
+                const movingY = Math.sin(veh.heading);
+                const dot = toCenterX * movingX + toCenterY * movingY;
+                if (dot > 0) {
+                  // Approaching and entering roundabout!
+                  const currentAngle = Math.atan2(veh.y - rb.y, veh.x - rb.x);
+                  const targetR = (rb.radius + rb.innerRadius) / 2 + (veh.laneOffset || 0) * 0.25;
+                  veh.roundaboutState = {
+                    rbId: rb.id,
+                    targetHeading: veh.heading,
+                    angle: currentAngle,
+                    targetRadius: targetR,
+                  };
+                  veh.x = rb.x + Math.cos(currentAngle) * targetR;
+                  veh.y = rb.y + Math.sin(currentAngle) * targetR;
+                  veh.heading = currentAngle + Math.PI / 2;
+                  inRoundabout = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (!inRoundabout) {
+            veh.x += Math.cos(veh.heading) * veh.speed * dt;
+            veh.y += Math.sin(veh.heading) * veh.speed * dt;
+          }
 
           // Wrap vehicle at city edges
           if (veh.x > city.width - 100) veh.x = 100;
@@ -500,6 +674,62 @@ export default function App() {
           if (veh.y > city.height - 100) veh.y = 100;
           if (veh.y < 100) veh.y = city.height - 100;
         });
+
+        // 3.3. Commuter Train Simulation
+        if (city.trains && city.trains.length > 0 && city.railroadTracks && city.railroadTracks[0]) {
+          const track = city.railroadTracks[0];
+          city.trains.forEach((train) => {
+            if (train.state === 'stopped') {
+              train.stopTimer -= dt;
+              if (train.stopTimer <= 0) {
+                train.state = 'cruising';
+                train.trackProgress = (train.trackProgress + 0.003) % 1;
+              }
+            } else {
+              // Cruising along track loop
+              train.trackProgress = (train.trackProgress + (train.speed * dt) / track.totalLength) % 1;
+              if (city.trainStations) {
+                const nearStation = city.trainStations.some(
+                  (st) => Math.abs(train.trackProgress - st.trackRatio) < 0.005
+                );
+                if (nearStation) {
+                  train.state = 'stopped';
+                  train.stopTimer = 5.5;
+                }
+              }
+            }
+
+            // Update positions of all connected coaches along track
+            for (let cIdx = 0; cIdx < train.cars.length; cIdx++) {
+              const carOffsetRatio = (cIdx * 38) / track.totalLength;
+              const carTrackRatio = (train.trackProgress - carOffsetRatio + 1) % 1;
+              const pt = getPointAlongTrack(track, carTrackRatio);
+              train.cars[cIdx].x = pt.x;
+              train.cars[cIdx].y = pt.y;
+              train.cars[cIdx].heading = pt.heading;
+            }
+          });
+        }
+
+        // 3.4. Drifting Clouds Simulation
+        if (city.driftingClouds) {
+          const windDir = weatherEngine.state.windDirection;
+          const windSpd = weatherEngine.state.windSpeed;
+          const cloudDriftSpeed = windSpd * 2.2 + 14;
+          const driftX = Math.cos(windDir) * cloudDriftSpeed * dt;
+          const driftY = Math.sin(windDir) * cloudDriftSpeed * dt;
+
+          city.driftingClouds.forEach((cloud) => {
+            cloud.x += driftX;
+            cloud.y += driftY;
+
+            // Wrap around world borders
+            if (cloud.x > city.width + cloud.radius) cloud.x = -cloud.radius;
+            if (cloud.x < -cloud.radius) cloud.x = city.width + cloud.radius;
+            if (cloud.y > city.height + cloud.radius) cloud.y = -cloud.radius;
+            if (cloud.y < -cloud.radius) cloud.y = city.height + cloud.radius;
+          });
+        }
 
         // 4. Pedestrian Wander & Reactions
         city.pedestrians.forEach((ped) => {
@@ -666,6 +896,13 @@ export default function App() {
           mission={activeMission}
           city={cityRef.current || undefined}
           obstacleAlert={currentObstacleAlert}
+          isAutoHoverActive={isAutoHoverActive}
+          inNoFlyZone={
+            !!cityRef.current?.noFlyZones?.some((nfz) => {
+              const dist = Math.hypot(hudHeli.x - nfz.x, hudHeli.y - nfz.y);
+              return dist <= nfz.radius && hudHeli.z <= nfz.ceilingAltitude;
+            })
+          }
           onOpenRadio={() => setIsRadioOpen(true)}
           onOpenHangar={() => setIsHangarOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
@@ -689,6 +926,9 @@ export default function App() {
             soundManager.resume();
             inputsRef.current = updater(inputsRef.current);
           }}
+          onJoystickActiveChange={(active) => {
+            isTouchJoystickActiveRef.current = active;
+          }}
           waterRemaining={hudHeli.water}
           waterMax={hudHeli.waterMax}
           isSirenActive={hudHeli.sirenActive}
@@ -697,6 +937,14 @@ export default function App() {
           isFLIRActive={hudHeli.flirActive}
           isHoistDeployed={hudHeli.hoistDeployed}
           collective={inputsRef.current.collective}
+          isAutoHoverActive={isAutoHoverActive}
+          onToggleAutoHover={() => {
+            setIsAutoHoverActive((prev) => {
+              const next = !prev;
+              inputsRef.current.autoHover = next;
+              return next;
+            });
+          }}
         />
       )}
 
@@ -817,9 +1065,14 @@ export default function App() {
         settings={settings}
         onUpdateSettings={setSettings}
         currentWeather={hudWeather.type}
+        currentTimeOfDay={hudWeather.timeOfDay}
+        onSetTimeOfDay={(hour) => {
+          weatherEngineRef.current.setTimeOfDay(hour);
+          setHudWeather({ ...weatherEngineRef.current.state });
+        }}
         onChangeWeather={(type) => {
           weatherEngineRef.current.setWeather(type);
-          setHudWeather(weatherEngineRef.current.state);
+          setHudWeather({ ...weatherEngineRef.current.state });
         }}
         onRegenerateCity={() => {
           initGameWorld(Date.now());

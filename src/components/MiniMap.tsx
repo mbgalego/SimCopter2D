@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Maximize2, Minimize2, Move } from 'lucide-react';
+import { Maximize2, Minimize2, Navigation } from 'lucide-react';
 import { CityData, HelicopterState, Mission } from '../types/game';
 
 interface MiniMapProps {
@@ -15,43 +15,13 @@ interface MiniMapProps {
 
 export const MiniMap: React.FC<MiniMapProps> = ({ city, heli, mission }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null);
 
   const size = isExpanded ? 220 : 120;
 
-  // Strict clamp so the minimap is ALWAYS 100% visible on screen, never cut off
-  const clampPos = useCallback((x: number, y: number, s: number) => {
-    const minX = 8;
-    const maxX = Math.max(minX, window.innerWidth - s - 12);
-    const minY = 48;
-    const maxY = Math.max(minY, window.innerHeight - s - 38);
-    return {
-      x: Math.max(minX, Math.min(maxX, x)),
-      y: Math.max(minY, Math.min(maxY, y)),
-    };
-  }, []);
-
-  // Re-clamp position on window resize or when size changes
-  useEffect(() => {
-    const handleResize = () => {
-      setPosition((prev) => (prev ? clampPos(prev.x, prev.y, size) : null));
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [clampPos, size]);
-
   const toggleExpanded = useCallback(() => {
-    setIsExpanded((prev) => {
-      const next = !prev;
-      const nextSize = next ? 220 : 120;
-      setPosition((currentPos) => (currentPos ? clampPos(currentPos.x, currentPos.y, nextSize) : null));
-      return next;
-    });
-  }, [clampPos]);
+    setIsExpanded((prev) => !prev);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -179,62 +149,18 @@ export const MiniMap: React.FC<MiniMapProps> = ({ city, heli, mission }) => {
     ctx.strokeRect(0, 0, size, size);
   }, [city, heli.x, heli.y, heli.heading, mission, isExpanded, size]);
 
-  // Pointer drag events
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    e.stopPropagation();
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    dragStartRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      initX: rect.left,
-      initY: rect.top,
-    };
-    setIsDragging(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }, []);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging || !dragStartRef.current) return;
-    const dx = e.clientX - dragStartRef.current.startX;
-    const dy = e.clientY - dragStartRef.current.startY;
-    setPosition(clampPos(dragStartRef.current.initX + dx, dragStartRef.current.initY + dy, size));
-  }, [isDragging, size, clampPos]);
-
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (isDragging) {
-      setIsDragging(false);
-      dragStartRef.current = null;
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {}
-    }
-  }, [isDragging]);
-
-  const defaultStyle: React.CSSProperties = position
-    ? { position: 'fixed', left: `${position.x}px`, top: `${position.y}px`, width: `${size}px` }
-    : { position: 'fixed', right: '12px', top: '78px', width: `${size}px` };
-
   return (
     <div
-      ref={containerRef}
-      style={defaultStyle}
-      className="pointer-events-auto z-30 select-none touch-none"
+      style={{ position: 'fixed', right: '10px', top: '46px', width: `${size}px` }}
+      className="pointer-events-auto z-30 select-none"
     >
       <div className="relative rounded-2xl overflow-hidden bg-slate-900/95 border-2 border-slate-700/90 shadow-2xl backdrop-blur-md">
-        {/* Draggable Header Bar */}
+        {/* Fixed Header Bar with Resize Toggle */}
         <div
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          className={`flex items-center justify-between px-2 py-1 bg-slate-950/90 border-b border-slate-800 text-[10px] font-mono text-slate-300 cursor-grab active:cursor-grabbing transition-colors ${
-            isDragging ? 'bg-sky-950/80 border-sky-500/50 text-sky-200' : ''
-          }`}
-          title="Drag anywhere to reposition GPS Map"
+          className="flex items-center justify-between px-2 py-1 bg-slate-950/90 border-b border-slate-800 text-[10px] font-mono text-slate-300"
         >
           <div className="flex items-center gap-1.5 font-bold">
-            <Move className="w-3 h-3 text-sky-400" />
+            <Navigation className="w-3 h-3 text-sky-400" />
             <span className="text-[9px] tracking-wider uppercase">GPS RADAR</span>
           </div>
           <button
@@ -242,8 +168,8 @@ export const MiniMap: React.FC<MiniMapProps> = ({ city, heli, mission }) => {
               e.stopPropagation();
               toggleExpanded();
             }}
-            className="flex items-center justify-center h-4 w-4 rounded text-slate-400 hover:text-white"
-            title="Toggle Map Size"
+            className="flex items-center justify-center h-4 w-4 rounded text-slate-400 hover:text-white transition-colors"
+            title={isExpanded ? 'Minimize Map Size' : 'Expand Map Size'}
           >
             {isExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
           </button>
@@ -255,6 +181,7 @@ export const MiniMap: React.FC<MiniMapProps> = ({ city, heli, mission }) => {
           style={{ width: `${size}px`, height: `${size}px` }}
           className="block cursor-pointer"
           onClick={toggleExpanded}
+          title="Click to toggle map size"
         />
       </div>
     </div>

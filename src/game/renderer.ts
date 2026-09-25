@@ -132,7 +132,7 @@ export class GameRenderer {
     const vpBottom = camY + ch / 2 / altitudeZoom + 350;
 
     // 1. Render Ground Terrain, Parks, Plazas, Gardens & Sidewalks
-    this.renderTerrain(ctx, city, vpLeft, vpRight, vpTop, vpBottom);
+    this.renderTerrain(ctx, city, weather, vpLeft, vpRight, vpTop, vpBottom);
 
     // 2. Render Water Bodies (Rivers, Lakes, Marina Harbor)
     this.renderWaterBodies(ctx, city, weather);
@@ -166,7 +166,7 @@ export class GameRenderer {
     this.renderStreetLights(ctx, city, weather, vpLeft, vpRight, vpTop, vpBottom);
 
     // 12. Render Ground Level & Pier Helipads
-    this.renderHelipads(ctx, city, heli, false);
+    this.renderHelipads(ctx, city, heli, weather, false);
 
     // 13. Render Animated Commuter Train on Tracks
     this.renderTrain(ctx, city, weather, vpLeft, vpRight, vpTop, vpBottom);
@@ -176,16 +176,16 @@ export class GameRenderer {
     this.renderPedestrians(ctx, city, false);
 
     // 15. Render Soft Ground Shadows from Drifting Clouds
-    this.renderDriftingClouds(ctx, city, weather, vpLeft, vpRight, vpTop, vpBottom, true);
+    this.renderDriftingClouds(ctx, city, weather, vpLeft, vpRight, vpTop, vpBottom, true, heli, 'all');
 
     // 16. Render Building Shadows (Proportional to height for instant altitude readability)
-    this.renderBuildingShadows(ctx, city, vpLeft, vpRight, vpTop, vpBottom);
+    this.renderBuildingShadows(ctx, city, weather, vpLeft, vpRight, vpTop, vpBottom);
 
     // 17. Render Buildings & Skyscrapers (with 2.5D radial perspective extrusion & floor bands)
     this.renderBuildings(ctx, city, heli, weather, vpLeft, vpRight, vpTop, vpBottom, obstacleAlert);
 
     // 18. Render Rooftop Helipads & Rooftop Victims (Matching building 2.5D extrusion)
-    this.renderHelipads(ctx, city, heli, true);
+    this.renderHelipads(ctx, city, heli, weather, true);
     this.renderPedestrians(ctx, city, true);
 
     // 19. Render Fire Nodes & Rising Smoke
@@ -197,11 +197,11 @@ export class GameRenderer {
     // 21. Render Downwash & Rotor Wash Effects on Ground/Water
     this.renderRotorWash(ctx, heli, city, dt);
 
-    // 22. Render Drifting Clouds in Atmosphere above terrain
-    this.renderDriftingClouds(ctx, city, weather, vpLeft, vpRight, vpTop, vpBottom, false);
+    // 22. Render Drifting Clouds that are BELOW the helicopter (when chopper flies higher than cloud deck)
+    this.renderDriftingClouds(ctx, city, weather, vpLeft, vpRight, vpTop, vpBottom, false, heli, 'below');
 
     // 23. Render Helicopter Ground Shadow (Tight under skids when landed, decouples with altitude)
-    this.renderHelicopterShadow(ctx, heli, city);
+    this.renderHelicopterShadow(ctx, heli, weather, city);
 
     // 24. Render Rescue Hoist Cable & Payload
     this.renderRescueHoist(ctx, heli);
@@ -212,7 +212,7 @@ export class GameRenderer {
     }
 
     // 26. Render Helicopter Fuselage & Rotor System
-    this.renderHelicopter(ctx, heli, model);
+    this.renderHelicopter(ctx, heli, model, weather);
 
     // 27. Mission Directional Navigation Chevron Arrow
     if (activeMission) {
@@ -224,15 +224,24 @@ export class GameRenderer {
       this.renderSearchlightBeam(ctx, heli);
     }
 
+    // 29. Render Drifting Clouds that are ABOVE the helicopter (chopper flies under clouds!)
+    this.renderDriftingClouds(ctx, city, weather, vpLeft, vpRight, vpTop, vpBottom, false, heli, 'above');
+
     ctx.restore();
 
-    // 18. Screen-Space Atmospheric Layers: Rain, Fog, Night Lighting & FLIR
+    // 30. Screen-Space Atmospheric Layers: Dynamic Time-of-Day, Stars, Rain, Fog, Night Lighting & FLIR
     this.renderAtmosphere(ctx, cw, ch, weather, heli, dt);
   }
 
-  private renderTerrain(ctx: CanvasRenderingContext2D, city: CityData, left: number, right: number, top: number, bottom: number) {
-    // City ground base: dark urban slate
-    ctx.fillStyle = '#1e293b';
+  private renderTerrain(ctx: CanvasRenderingContext2D, city: CityData, weather: WeatherState, left: number, right: number, top: number, bottom: number) {
+    // City ground base: dynamic urban slate responding to time of day
+    let groundBase = '#1e293b';
+    if (weather.timePhase === 'dawn') groundBase = '#262335';
+    else if (weather.timePhase === 'sunset') groundBase = '#2d2130';
+    else if (weather.timePhase === 'twilight') groundBase = '#141829';
+    else if (weather.timePhase === 'night') groundBase = '#0f172a';
+
+    ctx.fillStyle = groundBase;
     ctx.fillRect(Math.max(0, left), Math.max(0, top), Math.min(city.width, right) - Math.max(0, left), Math.min(city.height, bottom) - Math.max(0, top));
 
     // Render Park Zones (Grand Botanical Forest, Plazas, Gardens, Lawns, Stadium)
@@ -289,18 +298,40 @@ export class GameRenderer {
 
   private renderWaterBodies(ctx: CanvasRenderingContext2D, city: CityData, weather: WeatherState) {
     city.waterBodies.forEach((wb) => {
-      // Deep blue water
-      ctx.fillStyle = weather.type === 'night' ? '#082f49' : '#0369a1';
+      // Dynamic water color palette
+      let waterColor = '#0369a1';
+      let shoreColor = '#38bdf8';
+      let waveColor = 'rgba(255, 255, 255, 0.25)';
+
+      if (weather.timePhase === 'dawn') {
+        waterColor = '#1e3a5f';
+        shoreColor = '#f97316';
+        waveColor = 'rgba(254, 215, 170, 0.35)';
+      } else if (weather.timePhase === 'sunset') {
+        waterColor = '#311b42';
+        shoreColor = '#ea580c';
+        waveColor = 'rgba(251, 146, 60, 0.40)';
+      } else if (weather.timePhase === 'twilight') {
+        waterColor = '#0c1f38';
+        shoreColor = '#38bdf8';
+        waveColor = 'rgba(125, 211, 252, 0.20)';
+      } else if (weather.timePhase === 'night' || weather.type === 'night') {
+        waterColor = '#06172e';
+        shoreColor = '#1e3a5f';
+        waveColor = 'rgba(148, 163, 184, 0.15)';
+      }
+
+      ctx.fillStyle = waterColor;
       ctx.fillRect(wb.x, wb.y, wb.width, wb.height);
 
       // Water shoreline border
-      ctx.strokeStyle = '#38bdf8';
+      ctx.strokeStyle = shoreColor;
       ctx.lineWidth = 2;
       ctx.strokeRect(wb.x, wb.y, wb.width, wb.height);
 
       // Flowing wave lines
       ctx.lineWidth = 2;
-      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = waveColor;
       const t = Date.now() * 0.001;
       for (let y = wb.y + 35; y < wb.y + wb.height; y += 65) {
         ctx.beginPath();
@@ -309,7 +340,6 @@ export class GameRenderer {
         ctx.lineTo(wb.x + wb.width - 8 + offsetX, y);
         ctx.stroke();
       }
-      ctx.globalAlpha = 1.0;
     });
   }
 
@@ -563,19 +593,45 @@ export class GameRenderer {
       ctx.fillStyle = '#334155';
       ctx.fillRect(bridge.x, bridge.y, bridge.width, bridge.height);
 
-      // Roadway deck surface
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(bridge.x, bridge.y + 4, bridge.width, bridge.height - 8);
+      if (bridge.id === 'bridge-rail') {
+        // Railroad bridge deck with gravel ballast
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(bridge.x, bridge.y + 4, bridge.width, bridge.height - 8);
 
-      // Yellow double center line
-      ctx.strokeStyle = '#facc15';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([12, 10]);
-      ctx.beginPath();
-      ctx.moveTo(bridge.x, bridge.y + bridge.height / 2);
-      ctx.lineTo(bridge.x + bridge.width, bridge.y + bridge.height / 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
+        // Wooden crossties
+        ctx.strokeStyle = '#78350f';
+        ctx.lineWidth = 3;
+        for (let bx = bridge.x + 8; bx < bridge.x + bridge.width - 8; bx += 14) {
+          ctx.beginPath();
+          ctx.moveTo(bx, bridge.y + 8);
+          ctx.lineTo(bx, bridge.y + bridge.height - 8);
+          ctx.stroke();
+        }
+
+        // Twin steel rails
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bridge.x, bridge.y + bridge.height / 2 - 5);
+        ctx.lineTo(bridge.x + bridge.width, bridge.y + bridge.height / 2 - 5);
+        ctx.moveTo(bridge.x, bridge.y + bridge.height / 2 + 5);
+        ctx.lineTo(bridge.x + bridge.width, bridge.y + bridge.height / 2 + 5);
+        ctx.stroke();
+      } else {
+        // Roadway deck surface matching road tarmac
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(bridge.x, bridge.y + 3, bridge.width, bridge.height - 6);
+
+        // Yellow double center line aligned with road centerline
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([12, 10]);
+        ctx.beginPath();
+        ctx.moveTo(bridge.x, bridge.y + bridge.height / 2);
+        ctx.lineTo(bridge.x + bridge.width, bridge.y + bridge.height / 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
       // Steel safety barriers
       ctx.strokeStyle = '#94a3b8';
@@ -627,7 +683,10 @@ export class GameRenderer {
     });
   }
 
-  private renderHelipads(ctx: CanvasRenderingContext2D, city: CityData, heli: HelicopterState, rooftopOnly: boolean) {
+  private renderHelipads(ctx: CanvasRenderingContext2D, city: CityData, heli: HelicopterState, weather: WeatherState, rooftopOnly: boolean) {
+    const isNight = weather.ambientLight < 0.70 || weather.type === 'night';
+    const strobeOn = Math.floor(Date.now() / 350) % 2 === 0;
+
     city.helipads.forEach((pad) => {
       const isRooftop = !!pad.buildingId;
       if (isRooftop !== rooftopOnly) return;
@@ -676,15 +735,35 @@ export class GameRenderer {
         ctx.fillText('H', drawX, drawY);
       }
 
+      // Perimeter boundary LED markers (8 points around perimeter)
+      const ledCount = 8;
+      const primaryLed = pad.type === 'hospital' ? '#ef4444' : '#22c55e';
+      for (let i = 0; i < ledCount; i++) {
+        const a = (i * Math.PI * 2) / ledCount;
+        const bx = drawX + Math.cos(a) * (pad.radius - 3);
+        const by = drawY + Math.sin(a) * (pad.radius - 3);
+
+        ctx.fillStyle = primaryLed;
+        ctx.beginPath();
+        ctx.arc(bx, by, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (isNight) {
+          ctx.fillStyle = pad.type === 'hospital' ? 'rgba(239, 68, 68, 0.45)' : 'rgba(34, 197, 94, 0.45)';
+          ctx.beginPath();
+          ctx.arc(bx, by, 5.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
       // Perimeter beacon strobe lights
-      const strobeOn = Math.floor(Date.now() / 350) % 2 === 0;
       if (strobeOn) {
-        ctx.fillStyle = pad.type === 'hospital' ? '#ef4444' : '#22c55e';
+        ctx.fillStyle = pad.type === 'hospital' ? '#fca5a5' : '#86efac';
         for (let a = 0; a < Math.PI * 2; a += Math.PI / 2) {
           const bx = drawX + Math.cos(a) * (pad.radius - 3);
           const by = drawY + Math.sin(a) * (pad.radius - 3);
           ctx.beginPath();
-          ctx.arc(bx, by, 3.5, 0, Math.PI * 2);
+          ctx.arc(bx, by, 4, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -695,18 +774,36 @@ export class GameRenderer {
    * Renders directional sun-cast ground shadows proportional to building roofHeight.
    * This is the #1 visual cue enabling immediate altitude reading of tall vs short buildings!
    */
-  private renderBuildingShadows(ctx: CanvasRenderingContext2D, city: CityData, left: number, right: number, top: number, bottom: number) {
+  private renderBuildingShadows(
+    ctx: CanvasRenderingContext2D,
+    city: CityData,
+    weather: WeatherState,
+    left: number,
+    right: number,
+    top: number,
+    bottom: number
+  ) {
     ctx.save();
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.40)';
+
+    const sunAngle = weather.sunAngle ?? Math.PI * 0.25;
+    const sunAlt = weather.sunAltitude ?? 0.5;
+    const isDay = sunAlt > 0.02;
+
+    const shadowAlpha = isDay ? Math.max(0.18, 0.44 * (1.1 - (1 - weather.ambientLight) * 0.4)) : 0.14;
+    ctx.fillStyle = `rgba(0, 0, 0, ${shadowAlpha})`;
+
+    const cosA = Math.cos(sunAngle);
+    const sinA = Math.sin(sunAngle);
+
+    // When sun is low (dawn/dusk), shadows stretch dramatically; at noon, shadows are compact
+    const stretchFactor = isDay ? Math.min(2.2, Math.max(0.35, 1.3 - sunAlt * 0.85)) : 0.18;
 
     city.buildings.forEach((b) => {
       if (b.x + b.width < left - 250 || b.x > right + 250 || b.y + b.height < top - 250 || b.y > bottom + 250) return;
 
-      // Sun angle: Upper-left light casting towards bottom-right (dx: +0.707, dy: +0.707)
-      // 540 FT skyscraper casts 165px shadow, 30 FT house casts 10px shadow
-      const shadowDist = Math.max(8, (b.roofHeight / 540) * 165);
-      const sx = shadowDist * 0.707;
-      const sy = shadowDist * 0.707;
+      const shadowDist = Math.max(6, (b.roofHeight / 540) * 155 * stretchFactor);
+      const sx = cosA * shadowDist;
+      const sy = sinA * shadowDist;
 
       ctx.beginPath();
       ctx.moveTo(b.x, b.y);
@@ -764,10 +861,11 @@ export class GameRenderer {
         ctx.closePath();
         ctx.fill();
 
-        // Floor stripes on tall buildings
-        if (b.roofHeight >= 80) {
+        // Floor stripes & illuminated windows on tall buildings
+        if (b.roofHeight >= 60) {
           const stories = Math.min(24, Math.floor(b.roofHeight / 16));
-          ctx.strokeStyle = weather.ambientLight < 0.5 ? 'rgba(253, 224, 71, 0.45)' : 'rgba(148, 163, 184, 0.35)';
+          const isNight = weather.ambientLight < 0.70;
+          ctx.strokeStyle = isNight ? 'rgba(253, 224, 71, 0.45)' : 'rgba(148, 163, 184, 0.35)';
           ctx.lineWidth = 1.5;
           for (let s = 1; s < stories; s++) {
             const ratio = s / stories;
@@ -777,6 +875,14 @@ export class GameRenderer {
             ctx.moveTo(gx1, yStart);
             ctx.lineTo(rx1, yEnd);
             ctx.stroke();
+
+            // Illuminated window panels along the floor at night
+            if (isNight && (s + Math.floor(b.x / 40)) % 2 === 0) {
+              const wx = gx1 + (rx1 - gx1) * 0.5;
+              const wy = yStart + (yEnd - yStart) * 0.5;
+              ctx.fillStyle = (s % 3 === 0) ? 'rgba(254, 240, 138, 0.85)' : 'rgba(224, 242, 254, 0.75)';
+              ctx.fillRect(wx - 2, wy - 1.5, 4, 3);
+            }
           }
         }
       }
@@ -792,9 +898,10 @@ export class GameRenderer {
         ctx.closePath();
         ctx.fill();
 
-        if (b.roofHeight >= 80) {
+        if (b.roofHeight >= 60) {
           const stories = Math.min(24, Math.floor(b.roofHeight / 16));
-          ctx.strokeStyle = weather.ambientLight < 0.5 ? 'rgba(253, 224, 71, 0.45)' : 'rgba(148, 163, 184, 0.35)';
+          const isNight = weather.ambientLight < 0.70;
+          ctx.strokeStyle = isNight ? 'rgba(253, 224, 71, 0.45)' : 'rgba(148, 163, 184, 0.35)';
           ctx.lineWidth = 1.5;
           for (let s = 1; s < stories; s++) {
             const ratio = s / stories;
@@ -804,13 +911,21 @@ export class GameRenderer {
             ctx.moveTo(gx2, yStart);
             ctx.lineTo(rx2, yEnd);
             ctx.stroke();
+
+            // Illuminated window panels along the floor at night
+            if (isNight && (s + Math.floor(b.y / 40)) % 2 === 0) {
+              const wx = gx2 + (rx2 - gx2) * 0.5;
+              const wy = yStart + (yEnd - yStart) * 0.5;
+              ctx.fillStyle = (s % 3 === 0) ? 'rgba(254, 240, 138, 0.85)' : 'rgba(224, 242, 254, 0.75)';
+              ctx.fillRect(wx - 2, wy - 1.5, 4, 3);
+            }
           }
         }
       }
 
       // North Wall (visible when roof shifted down: dy > 0)
       if (dy > 0) {
-        ctx.fillStyle = '#0f172a'; // deepest shadow face
+        ctx.fillStyle = '#1e293b'; // shadow face (visible against slate terrain)
         ctx.beginPath();
         ctx.moveTo(gx1, gy1);
         ctx.lineTo(rx1, ry1);
@@ -1007,7 +1122,7 @@ export class GameRenderer {
     top: number,
     bottom: number
   ) {
-    const isDark = weather.ambientLight < 0.65 || weather.type === 'night';
+    const isDark = weather.ambientLight < 0.70 || weather.type === 'night';
 
     city.vehicles.forEach((veh) => {
       if (veh.x < left - 60 || veh.x > right + 60 || veh.y < top - 60 || veh.y > bottom + 60) return;
@@ -1019,11 +1134,12 @@ export class GameRenderer {
       // --- 1. HEADLIGHT CONES PROJECTING FORWARD AT NIGHT / LOW LIGHT ---
       if (isDark) {
         ctx.save();
-        const beamLen = veh.type === 'truck' ? 65 : 45;
-        const beamW = 18;
+        const beamLen = veh.type === 'truck' ? 75 : 55;
+        const beamW = 20;
         const gradL = ctx.createRadialGradient(8, -3, 2, 8 + beamLen * 0.8, -beamW / 2, beamLen);
-        gradL.addColorStop(0, 'rgba(254, 240, 138, 0.7)');
-        gradL.addColorStop(0.5, 'rgba(254, 240, 138, 0.25)');
+        gradL.addColorStop(0, 'rgba(255, 255, 220, 0.95)');
+        gradL.addColorStop(0.35, 'rgba(254, 240, 138, 0.60)');
+        gradL.addColorStop(0.75, 'rgba(254, 240, 138, 0.20)');
         gradL.addColorStop(1, 'rgba(254, 240, 138, 0)');
 
         ctx.fillStyle = gradL;
@@ -1035,8 +1151,9 @@ export class GameRenderer {
         ctx.fill();
 
         const gradR = ctx.createRadialGradient(8, 3, 2, 8 + beamLen * 0.8, beamW / 2, beamLen);
-        gradR.addColorStop(0, 'rgba(254, 240, 138, 0.7)');
-        gradR.addColorStop(0.5, 'rgba(254, 240, 138, 0.25)');
+        gradR.addColorStop(0, 'rgba(255, 255, 220, 0.95)');
+        gradR.addColorStop(0.35, 'rgba(254, 240, 138, 0.60)');
+        gradR.addColorStop(0.75, 'rgba(254, 240, 138, 0.20)');
         gradR.addColorStop(1, 'rgba(254, 240, 138, 0)');
 
         ctx.fillStyle = gradR;
@@ -1189,19 +1306,40 @@ export class GameRenderer {
           ctx.stroke();
         }
 
-        // Emergency Strobe Lightbar
+        // Emergency Strobe Lightbar & Radiant Aura
         if (veh.siren) {
           const strobe = Math.floor(Date.now() / 140) % 2 === 0;
           ctx.fillStyle = strobe ? '#ef4444' : '#3b82f6';
           ctx.fillRect(-2, -width / 2 + 1, 4, width - 2);
+
+          // Pulsating emergency flash halo around emergency vehicle
+          const auraGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 36);
+          auraGrad.addColorStop(0, strobe ? 'rgba(239, 68, 68, 0.75)' : 'rgba(59, 130, 246, 0.75)');
+          auraGrad.addColorStop(0.5, strobe ? 'rgba(239, 68, 68, 0.25)' : 'rgba(59, 130, 246, 0.25)');
+          auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.fillStyle = auraGrad;
+          ctx.beginPath();
+          ctx.arc(0, 0, 36, 0, Math.PI * 2);
+          ctx.fill();
         }
 
-        // Taillights
+        // Headlights & Taillights at night
         if (isDark) {
+          // Front Headlight Bulbs
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(length / 2 - 2, -width / 2 + 1, 2, 2);
+          ctx.fillRect(length / 2 - 2, width / 2 - 3, 2, 2);
+
+          // Taillights
           const isBraking = veh.stoppedAtLight || veh.speed < 4;
           ctx.fillStyle = isBraking ? '#ef4444' : '#b91c1c';
-          ctx.fillRect(-length / 2 - 1, -width / 2 + 1, 1.5, 2);
-          ctx.fillRect(-length / 2 - 1, width / 2 - 3, 1.5, 2);
+          ctx.fillRect(-length / 2 - 1, -width / 2 + 1, 2, 2);
+          ctx.fillRect(-length / 2 - 1, width / 2 - 3, 2, 2);
+
+          // Taillight glow
+          ctx.fillStyle = isBraking ? 'rgba(239, 68, 68, 0.5)' : 'rgba(239, 68, 68, 0.25)';
+          ctx.fillRect(-length / 2 - 4, -width / 2, 4, 3);
+          ctx.fillRect(-length / 2 - 4, width / 2 - 3, 4, 3);
         }
       }
 
@@ -1443,17 +1581,24 @@ export class GameRenderer {
    * When landed, shadow sits directly beneath the skids with ZERO offset.
    * As the helicopter climbs, shadow shifts outward along sun vector and softens.
    */
-  private renderHelicopterShadow(ctx: CanvasRenderingContext2D, heli: HelicopterState, city: CityData) {
+  private renderHelicopterShadow(ctx: CanvasRenderingContext2D, heli: HelicopterState, weather: WeatherState, city: CityData) {
     const isLanded = heli.isLanded || heli.z < 2;
     const altRatio = Math.min(1.0, Math.max(0, heli.z / 600));
 
-    // When landed: 0px offset! When airborne: up to 75px offset along sun angle
-    const shadowDist = isLanded ? 0 : altRatio * 75;
+    const sunAngle = weather.sunAngle ?? Math.PI * 0.25;
+    const sunAlt = weather.sunAltitude ?? 0.5;
+    const stretch = sunAlt > 0.05 ? Math.min(2.0, 1.25 - sunAlt * 0.7) : 0.25;
+
+    // When landed: 0px offset! When airborne: up to 80px offset along dynamic sun angle
+    const shadowDist = isLanded ? 0 : altRatio * 75 * stretch;
     const shadowScale = isLanded ? 1.0 : Math.max(0.65, 1.0 - altRatio * 0.35);
-    const shadowAlpha = isLanded ? 0.55 : Math.max(0.14, 0.52 - altRatio * 0.36);
+    const shadowAlpha = isLanded ? 0.55 : Math.max(0.12, 0.50 - altRatio * 0.36);
+
+    const cosA = Math.cos(sunAngle);
+    const sinA = Math.sin(sunAngle);
 
     ctx.save();
-    ctx.translate(heli.x + shadowDist * 0.707, heli.y + shadowDist * 0.707);
+    ctx.translate(heli.x + shadowDist * cosA, heli.y + shadowDist * sinA);
     ctx.rotate(heli.heading);
     ctx.scale(shadowScale, shadowScale);
 
@@ -1508,7 +1653,9 @@ export class GameRenderer {
     ctx.restore();
   }
 
-  private renderHelicopter(ctx: CanvasRenderingContext2D, heli: HelicopterState, model: HelicopterModel) {
+  private renderHelicopter(ctx: CanvasRenderingContext2D, heli: HelicopterState, model: HelicopterModel, weather?: WeatherState) {
+    const isDark = weather ? (weather.ambientLight < 0.70 || weather.type === 'night') : false;
+
     ctx.save();
     ctx.translate(heli.x, heli.y);
     ctx.rotate(heli.heading);
@@ -1531,6 +1678,29 @@ export class GameRenderer {
     ctx.fillRect(-12, -6, 24, 2);
     ctx.fillRect(-12, 12, 24, 2);
 
+    // Navigation Lights: Port (Red / Left), Starboard (Green / Right)
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(-11, 2, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    if (isDark) {
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.55)';
+      ctx.beginPath();
+      ctx.arc(-11, 2, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = '#22c55e';
+    ctx.beginPath();
+    ctx.arc(11, 2, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    if (isDark) {
+      ctx.fillStyle = 'rgba(34, 197, 94, 0.55)';
+      ctx.beginPath();
+      ctx.arc(11, 2, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     // 2. Tail Boom & Fin
     ctx.fillStyle = model.color;
     ctx.fillRect(-2.5, 12, 5, 28);
@@ -1538,6 +1708,26 @@ export class GameRenderer {
     // Horizontal stabilizer
     ctx.fillStyle = '#334155';
     ctx.fillRect(-10, 32, 20, 2.5);
+
+    // Tail white navigation light
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(0, 42, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Anti-collision white strobe (double pulse every 1.2s)
+    const strobeTime = Date.now() % 1200;
+    const isAntiCollisionFlash = strobeTime < 80 || (strobeTime > 160 && strobeTime < 240);
+    if (isAntiCollisionFlash) {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, 42, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.beginPath();
+      ctx.arc(0, 42, 10, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Tail Rotor spinning
     ctx.save();
@@ -1556,21 +1746,29 @@ export class GameRenderer {
     ctx.beginPath();
     ctx.ellipse(0, 0, 11, 23, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#0f172a';
+    ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.45)' : '#0f172a';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
     // 4. Cockpit Glass Canopy
-    ctx.fillStyle = '#0284c7';
+    ctx.fillStyle = isDark ? 'rgba(56, 189, 248, 0.65)' : '#0284c7';
     ctx.beginPath();
     ctx.ellipse(0, -9, 8, 10, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Glass glare reflection
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
-    ctx.beginPath();
-    ctx.ellipse(-2, -11, 4, 6, -0.3, 0, Math.PI * 2);
-    ctx.fill();
+    // Glass glare reflection / Avionics HUD glow
+    if (isDark) {
+      // Illuminated flight-deck instrument HUD
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(-3, -12, 6, 2.5);
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(-2, -9, 4, 1.5);
+    } else {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.beginPath();
+      ctx.ellipse(-2, -11, 4, 6, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // 4.5. High-Pressure Water Cannon / Monitor Nozzle (Protruding forward at the nose)
     if (model.hasWaterCannon || heli.waterMax > 0) {
@@ -1626,12 +1824,40 @@ export class GameRenderer {
       ctx.restore();
     }
 
-    // 5. Emergency Siren Beacon
+    // 5. Emergency Siren Beacon System (Dual High-Output Strobes & Radiant Halo)
     if (heli.sirenActive) {
-      const flash = Math.floor(Date.now() / 150) % 2 === 0;
-      ctx.fillStyle = flash ? '#ef4444' : '#3b82f6';
+      const flashPhase = Math.floor(Date.now() / 110) % 4;
+      const isRed = flashPhase < 2;
+      const primaryColor = isRed ? '#ef4444' : '#3b82f6';
+      const rgbStr = isRed ? '239, 68, 68' : '59, 130, 246';
+
+      // Radiant Emergency Flash Aura (Radius 68px)
+      // Completely illuminates helicopter fuselage, rotor disc, and surrounds
+      const auraGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, 68);
+      auraGrad.addColorStop(0, `rgba(${rgbStr}, 0.85)`);
+      auraGrad.addColorStop(0.35, `rgba(${rgbStr}, 0.45)`);
+      auraGrad.addColorStop(0.75, `rgba(${rgbStr}, 0.15)`);
+      auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+      ctx.fillStyle = auraGrad;
       ctx.beginPath();
-      ctx.arc(0, 2, 4, 0, Math.PI * 2);
+      ctx.arc(0, 0, 68, 0, Math.PI * 2);
+      ctx.fill();
+
+      // High-Intensity Dual Roof Strobes
+      ctx.fillStyle = primaryColor;
+      ctx.beginPath();
+      ctx.arc(-4, -2, 4.5, 0, Math.PI * 2);
+      ctx.arc(4, -2, 4.5, 0, Math.PI * 2);
+      ctx.arc(0, 10, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bright white flash core
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(-4, -2, 2, 0, Math.PI * 2);
+      ctx.arc(4, -2, 2, 0, Math.PI * 2);
+      ctx.arc(0, 10, 2, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -1688,11 +1914,12 @@ export class GameRenderer {
     ctx.translate(heli.x, heli.y);
     ctx.rotate(heli.heading);
 
-    const length = 260;
-    const beamAngle = 0.45;
+    const length = 280;
+    const beamAngle = 0.42;
 
     const grad = ctx.createRadialGradient(0, -10, 5, 0, -length * 0.8, length);
-    grad.addColorStop(0, 'rgba(254, 240, 138, 0.7)');
+    grad.addColorStop(0, 'rgba(255, 255, 220, 0.95)');
+    grad.addColorStop(0.3, 'rgba(254, 240, 138, 0.65)');
     grad.addColorStop(0.7, 'rgba(254, 240, 138, 0.25)');
     grad.addColorStop(1, 'rgba(254, 240, 138, 0)');
 
@@ -1702,6 +1929,16 @@ export class GameRenderer {
     ctx.lineTo(-Math.sin(beamAngle) * length, -Math.cos(beamAngle) * length);
     ctx.lineTo(Math.sin(beamAngle) * length, -Math.cos(beamAngle) * length);
     ctx.closePath();
+    ctx.fill();
+
+    // Illuminated ground spotlight pool at beam impact zone
+    const spotGrad = ctx.createRadialGradient(0, -length * 0.85, 4, 0, -length * 0.85, 60);
+    spotGrad.addColorStop(0, 'rgba(255, 255, 220, 0.70)');
+    spotGrad.addColorStop(0.4, 'rgba(254, 240, 138, 0.35)');
+    spotGrad.addColorStop(1, 'rgba(254, 240, 138, 0)');
+    ctx.fillStyle = spotGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, -length * 0.85, 60, 42, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
@@ -1715,16 +1952,35 @@ export class GameRenderer {
     heli: HelicopterState,
     dt: number
   ) {
-    // Night overlay darkness
-    if (weather.ambientLight < 0.95) {
-      const darkness = 1 - weather.ambientLight;
-      ctx.fillStyle = `rgba(3, 7, 18, ${darkness * 0.75})`;
+    // 1. Dynamic Time-of-Day Atmospheric Color Wash (Dawn peach/rose, Sunset fiery orange/crimson, Twilight sapphire, Night midnight)
+    if (weather.skyAtmosphere && weather.skyAtmosphere.alpha > 0.01) {
+      const { r, g, b, alpha } = weather.skyAtmosphere;
+      // Clamp atmospheric opacity to ensure ground, vehicles, buildings, and helicopter remain crisp and visible
+      const clampedAlpha = Math.min(0.32, alpha);
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`;
       ctx.fillRect(0, 0, cw, ch);
     }
 
-    // Fog overlay
+    // 2. Twinkling Stars in Nocturnal Sky
+    if (weather.ambientLight < 0.65 && weather.visibility > 0.45) {
+      const starOpacity = Math.min(0.85, (0.65 - weather.ambientLight) * 2.8);
+      ctx.save();
+      ctx.fillStyle = `rgba(255, 255, 255, ${starOpacity})`;
+      for (let i = 0; i < 70; i++) {
+        const sx = (i * 137.5 + 40) % cw;
+        const sy = (i * 93.7 + 25) % (ch * 0.85);
+        const sz = i % 4 === 0 ? 2 : 1;
+        const twinkle = (Math.sin(Date.now() * 0.003 + i * 2.3) + 1) * 0.5;
+        if (twinkle > 0.2) {
+          ctx.fillRect(sx, sy, sz, sz);
+        }
+      }
+      ctx.restore();
+    }
+
+    // 3. Fog overlay
     if (weather.visibility < 0.85) {
-      const fogDensity = (1 - weather.visibility) * 0.65;
+      const fogDensity = (1 - weather.visibility) * 0.45;
       ctx.fillStyle = `rgba(203, 213, 225, ${fogDensity})`;
       ctx.fillRect(0, 0, cw, ch);
     }
@@ -2573,35 +2829,48 @@ export class GameRenderer {
     bottom: number
   ) {
     if (!city.streetLights) return;
-    const isDark = weather.ambientLight < 0.65 || weather.type === 'night';
+    const isDark = weather.ambientLight < 0.70 || weather.type === 'night';
 
     city.streetLights.forEach((sl) => {
-      if (sl.x < left - 40 || sl.x > right + 40 || sl.y < top - 40 || sl.y > bottom + 40) return;
+      if (sl.x < left - 55 || sl.x > right + 55 || sl.y < top - 55 || sl.y > bottom + 55) return;
 
-      // Lamppost pole
-      ctx.fillStyle = '#475569';
-      ctx.beginPath();
-      ctx.arc(sl.x, sl.y, 2, 0, Math.PI * 2);
-      ctx.fill();
-
-      // At night / dark: cast soft circular warm amber pool of light onto tarmac
+      // At night / dark: cast warm amber pool of light onto tarmac
       if (isDark) {
-        const poolRadius = 42;
+        const poolRadius = 48;
         const grad = ctx.createRadialGradient(sl.x, sl.y, 2, sl.x, sl.y, poolRadius);
-        grad.addColorStop(0, 'rgba(254, 240, 138, 0.32)');
-        grad.addColorStop(0.5, 'rgba(254, 240, 138, 0.12)');
+        grad.addColorStop(0, 'rgba(254, 240, 138, 0.65)');
+        grad.addColorStop(0.35, 'rgba(254, 240, 138, 0.35)');
+        grad.addColorStop(0.75, 'rgba(254, 240, 138, 0.10)');
         grad.addColorStop(1, 'rgba(254, 240, 138, 0)');
 
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(sl.x, sl.y, poolRadius, 0, Math.PI * 2);
         ctx.fill();
+
+        // Glowing lamp bulb head
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(sl.x, sl.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(sl.x, sl.y, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Lamppost pole during daylight
+        ctx.fillStyle = '#475569';
+        ctx.beginPath();
+        ctx.arc(sl.x, sl.y, 2, 0, Math.PI * 2);
+        ctx.fill();
       }
     });
   }
 
   /**
-   * 15 & 22. DRIFTING CLOUDS (Shadows on ground + Atmospheric cloud puffs in sky)
+   * 15 & 22 & 29. DRIFTING CLOUDS
+   * Ground shadows + Atmospheric clouds that dynamically layer ABOVE or BELOW the helicopter based on altitude!
    */
   private renderDriftingClouds(
     ctx: CanvasRenderingContext2D,
@@ -2611,14 +2880,32 @@ export class GameRenderer {
     right: number,
     top: number,
     bottom: number,
-    shadowsOnly: boolean
+    shadowsOnly: boolean,
+    heli?: HelicopterState,
+    altitudeFilter: 'all' | 'above' | 'below' = 'all'
   ) {
     if (!city.driftingClouds) return;
 
+    const sunAngle = weather.sunAngle ?? Math.PI * 0.25;
+    const sunAlt = weather.sunAltitude ?? 0.5;
+    const sDist = Math.max(16, (1.25 - sunAlt) * 65);
+    const cosA = Math.cos(sunAngle);
+    const sinA = Math.sin(sunAngle);
+
     city.driftingClouds.forEach((cloud) => {
-      // Offset shadows slightly to simulate sunlight
-      const cx = shadowsOnly ? cloud.x + 45 : cloud.x;
-      const cy = shadowsOnly ? cloud.y + 45 : cloud.y;
+      const cloudAlt = cloud.altitude || 480;
+
+      // Filter clouds relative to helicopter altitude:
+      // If 'above', only render clouds higher than chopper (chopper flies under them)
+      // If 'below', only render clouds lower than chopper (chopper flies over them)
+      if (!shadowsOnly && heli) {
+        if (altitudeFilter === 'above' && cloudAlt <= heli.z) return;
+        if (altitudeFilter === 'below' && cloudAlt > heli.z) return;
+      }
+
+      // Offset shadows along dynamic sun angle
+      const cx = shadowsOnly ? cloud.x + cosA * sDist : cloud.x;
+      const cy = shadowsOnly ? cloud.y + sinA * sDist : cloud.y;
 
       if (cx + cloud.radius < left - 100 || cx - cloud.radius > right + 100 || cy + cloud.radius < top - 100 || cy - cloud.radius > bottom + 100) return;
 
@@ -2629,16 +2916,21 @@ export class GameRenderer {
 
         if (shadowsOnly) {
           // Soft ground shadow
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.14)';
+          ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0.06, 0.16 * weather.ambientLight)})`;
           ctx.beginPath();
           ctx.arc(px, py, puff.r, 0, Math.PI * 2);
           ctx.fill();
         } else {
-          // Atmospheric white/gray cloud puff drifting overhead
+          // Atmospheric cloud puff drifting overhead with time-of-day tint
           const grad = ctx.createRadialGradient(px, py, 4, px, py, puff.r);
-          grad.addColorStop(0, `rgba(255, 255, 255, ${cloud.opacity * 0.65})`);
-          grad.addColorStop(0.6, `rgba(241, 245, 249, ${cloud.opacity * 0.45})`);
-          grad.addColorStop(1, 'rgba(241, 245, 249, 0)');
+          const atmos = weather.skyAtmosphere || { r: 255, g: 255, b: 255 };
+          const rPuff = Math.round(255 * 0.7 + atmos.r * 0.3);
+          const gPuff = Math.round(255 * 0.7 + atmos.g * 0.3);
+          const bPuff = Math.round(255 * 0.7 + atmos.b * 0.3);
+
+          grad.addColorStop(0, `rgba(${rPuff}, ${gPuff}, ${bPuff}, ${cloud.opacity * 0.75})`);
+          grad.addColorStop(0.6, `rgba(${Math.round(rPuff * 0.95)}, ${Math.round(gPuff * 0.95)}, ${Math.round(bPuff * 0.95)}, ${cloud.opacity * 0.5})`);
+          grad.addColorStop(1, `rgba(${Math.round(rPuff * 0.9)}, ${Math.round(gPuff * 0.9)}, ${Math.round(bPuff * 0.9)}, 0)`);
 
           ctx.fillStyle = grad;
           ctx.beginPath();
